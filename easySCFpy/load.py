@@ -4,11 +4,12 @@ from scipy import sparse
 import anndata
 import h5py
 from typing import Union, Sequence
-from anndata._io.specs import  read_elem
+from anndata._io.specs import read_elem
 from anndata._io.h5ad import read_dataframe
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
+
 
 def read_dense_matrix(h5_group):
     print("Reading dense matrix")
@@ -40,7 +41,10 @@ def read_matrice_matrix(h5_group, sparse_format):
 
 def h5_to_X(layers, dataName, as_sparse, as_sparse_fmt, chunk_size):
     checkSp = "X" if dataName == "data" else "raw/X"
-    if not checkSp in as_sparse and layers.attrs.get("encoding-type") == "dense":
+    if (
+        not checkSp in as_sparse
+        and layers[dataName].attrs.get("encoding-type") == "array"
+    ):
         Data = read_dense_matrix(layers[dataName])
     else:
         Data = read_matrice_matrix(layers[dataName], sparse_format=as_sparse_fmt)
@@ -63,6 +67,7 @@ def h5_to_misc(h5):
                 )
             elif isinstance(group[key], h5py.Group):
                 parse_group(group[key], parent_key + key + "/")
+
     parse_group(misc)
 
     reorganized_data_dict = {}
@@ -112,6 +117,7 @@ def h5_to_uns_dict(h5file: h5py.File, path: str) -> dict:
             data[key] = item
     return data
 
+
 def read_h5_to_scanpy(
     filename: Union[str, Path],
     backed: Union[Literal["r"], Literal["r+"], bool, None] = None,
@@ -147,22 +153,29 @@ def read_h5_to_scanpy(
             layers = h5.get("assay", {}).get("RNA", {}).get("layers", None)
             if layers is not None:
                 if "data" in layers.keys():
-                    data = h5_to_X(
-                        layers, "data", as_sparse, as_sparse_fmt, chunk_size
-                    )
+                    data = h5_to_X(layers, "data", as_sparse, as_sparse_fmt, chunk_size)
                     rawData = h5_to_X(
                         layers, "rawdata", as_sparse, as_sparse_fmt, chunk_size
                     )
 
+                    obs = read_dataframe(h5["obs"])
+                    obs = obs if obs.shape[0] != 0 and obs.shape[1] != 0 else None
+                    var = read_dataframe(h5["var/var"])
+                    var = var if var.shape[0] != 0 and var.shape[1] != 0 else None
                     adata = anndata.AnnData(
                         X=data,
-                        obs=read_dataframe(h5["obs"]),
-                        var=read_dataframe(h5["var/var"]),
+                        obs=obs,
+                        var=var,
                     )
+
+                    obs = read_dataframe(h5["obs"])
+                    obs = obs if obs.shape[0] != 0 and obs.shape[1] != 0 else None
+                    var = read_dataframe(h5["var/rawvar"])
+                    var = var if var.shape[0] != 0 and var.shape[1] != 0 else None
                     adata_raw = anndata.AnnData(
                         X=rawData,
-                        obs=read_dataframe(h5["obs"]),
-                        var=read_dataframe(h5["var/rawvar"]),
+                        obs=obs,
+                        var=var,
                     )
                     adata.raw = adata_raw
                 else:
@@ -187,6 +200,7 @@ def read_h5_to_scanpy(
         if "commands" in h5.keys():
             adata.uns = h5_to_uns_dict(h5, "uns")
     return adata
+
 
 def loadH5(
     filename: Union[str, Path],
