@@ -70,6 +70,9 @@ def obsm_to_h5(
     obsmname="obsm",
     dataset_kwargs: Mapping = MappingProxyType({}),
 ):
+    for i in adata.obsm:
+        if type(adata.obsm[i]) == "pandas.core.frame.DataFrame":
+            adata.obsm[i] = adata.obsm[i].values
     if hasattr(adata, obsmname):
         write_elem(h5, "reductions", dict(adata.obsm), dataset_kwargs=dataset_kwargs)
 
